@@ -27,27 +27,65 @@ type BotInfo struct {
 	WebhookURL *url.URL
 }
 
-func (b *BotInfo) InitBotObject() error {
-	token := os.Getenv("TOKEN")
-	if token == "" {
+var TOKEN string
+var WEBHOOK_URL string
+var NAMES_FILE string
+var NOPINGDAYS string
+var HOUR int
+var MINUTE int
+
+func readAllEnvs() {
+	TOKEN := os.Getenv("TOKEN")
+	if TOKEN== "" {
 		return fmt.Errorf("Please set environment variable TOKEN")
 	}
-	var err error
-	b.URL, err = url.Parse(URL + token)
-	if err != nil {
-		return fmt.Errorf("Error parsing url: %s, Error: %v", (URL + token), err)
-	}
 
-	webhookurl := os.Getenv("WEBHOOK_URL")
-	if webhookurl == "" {
+	WEBHOOK_URL := os.Getenv("WEBHOOK_URL")
+	if WEBHOOK_URL == "" {
 		return fmt.Errorf("Please set environment variable WEBHOOK_URL")
 	}
 
-	b.WebhookURL, err = url.Parse(webhookurl)
-	if err != nil {
-		return fmt.Errorf("Error parsing url: %s, Error: %v", webhookurl, err)
+	NAMES_FILE := os.Getenv("NAMES")
+	if NAMES_FILE == "" {
+		NAMES_FILE = "names.yml"
+		logrus.Infof("Using default names file name: %s", NAMES_FILE)
 	}
-	b.WebhookURL.Path = path.Join(b.WebhookURL.Path, token)
+
+	NOPINGDAYS := os.Getenv("NOPINGDAYS")
+	if NOPINGDAYS == "" {
+		NOPINGDAYS = "Saturday,Sunday"
+		logrus.Infof("NOPINGDAYS not set using default: %s", NOPINGDAYS)
+	}
+
+	// set HOUR
+	hourstr := os.Getenv("HOUR")
+	HOUR, err := strconv.Atoi(hourstr)
+	if err != nil {
+		HOUR = 12
+		logrus.Infof("Using default hour: %d", HOUR)
+	}
+
+	// set minute
+	minstr := os.Getenv("MINUTE")
+	MINUTE, err := strconv.Atoi(minstr)
+	if err != nil {
+		MINUTE = 45
+		logrus.Infof("Using default minutes: %d", MINUTE)
+	}
+}
+
+func (b *BotInfo) InitBotObject() error {
+	var err error
+	b.URL, err = url.Parse(URL + TOKEN)
+	if err != nil {
+		return fmt.Errorf("Error parsing url: %s, Error: %v", (URL + TOKEN), err)
+	}
+
+	b.WebhookURL, err = url.Parse(WEBHOOK_URL)
+	if err != nil {
+		return fmt.Errorf("Error parsing url: %s, Error: %v", WEBHOOK_URL, err)
+	}
+	b.WebhookURL.Path = path.Join(b.WebhookURL.Path, TOKEN)
 
 	logrus.Infof("Botinfo object initialized.")
 	return nil
@@ -194,17 +232,10 @@ func PostMessage(message string) {
 }
 
 func getNames() ([]string, error) {
-
-	namesFile := os.Getenv("NAMES")
-	if namesFile == "" {
-		namesFile = "names.yml"
-		logrus.Infof("Using default names file name: %s", namesFile)
-	}
-
 	type NamesList struct {
 		Names []string `yaml:"names"`
 	}
-	nameFileContents, err := ioutil.ReadFile(namesFile)
+	nameFileContents, err := ioutil.ReadFile(NAMES_FILE)
 	if err != nil {
 		return []string{}, fmt.Errorf("Error while reading names file: %v", err)
 	}
@@ -219,12 +250,7 @@ func getNames() ([]string, error) {
 }
 
 func shouldIPingToday(t time.Time) bool {
-	noping := os.Getenv("NOPINGDAYS")
-	if noping == "" {
-		noping = "Saturday,Sunday"
-		logrus.Infof("NOPINGDAYS not set using default: %s", noping)
-	}
-	noPingDays := strings.Split(noping, ",")
+	noPingDays := strings.Split(NOPINGDAYS, ",")
 	for _, day := range noPingDays {
 		if t.Weekday().String() == day {
 			return false
@@ -234,23 +260,6 @@ func shouldIPingToday(t time.Time) bool {
 }
 
 func PingForLunch() {
-
-	// set hour
-	hourstr := os.Getenv("HOUR")
-	hour, err := strconv.Atoi(hourstr)
-	if err != nil {
-		hour = 12
-		logrus.Infof("Using default hour: %d", hour)
-	}
-
-	// set minute
-	minstr := os.Getenv("MINUTE")
-	min, err := strconv.Atoi(minstr)
-	if err != nil {
-		min = 45
-		logrus.Infof("Using default minutes: %d", min)
-	}
-
 	indiaTZ, err := time.LoadLocation(IndiaTimeZoneID)
 	if err != nil {
 		logrus.Fatalf("Error parsing timezone. Error: %v", err)
@@ -268,7 +277,7 @@ func PingForLunch() {
 		}
 
 		// ping only when time matches and if ping not done for that day
-		if indiaTime.Hour() == hour && indiaTime.Minute() == min && !pingdone {
+		if indiaTime.Hour() == HOUR && indiaTime.Minute() == MINUTE && !pingdone {
 			// trigger send message from here:set
 			names, err := getNames()
 			if err != nil {
